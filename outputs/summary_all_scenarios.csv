@@ -1,0 +1,5 @@
+scenario,total_cost_eur,imported_energy_kwh,exported_energy_kwh,dg_energy_kwh,final_bess_soc,final_hss_soh,final_pev_soc,pev_target,pev_target_satisfied,comfort_violation_degC_sum,temp_slack_sum,pev_slack_max_kwh,max_power_balance_residual_kw
+scenario_A_summer_cf_0_15,3695.2026782281746,4930.481234613258,5.433797085187144,5760.0,0.1,0.5,0.8,0.8,True,7.105427357601002e-15,0.0,0.0,8.137934770502397e-14
+scenario_B_summer_cf_0_45,5519.016832866452,10678.01012426745,0.0,-8.769374115757955e-14,0.1,0.5,0.8,0.8,True,0.0,-8.215650382226158e-15,0.0,4.973799150320701e-14
+scenario_C_winter_cf_0_15,3009.0737818154503,3774.4361668444603,0.0,5760.0,0.1,0.5,0.8,0.8,True,0.0,0.0,0.0,2.353672812205332e-14
+scenario_D_winter_cf_0_45,4708.992321278596,9532.45603534704,0.0,3.2240876635114546e-13,0.1,0.5,0.8,0.8,True,0.0,0.0,0.0,2.220446049250313e-14

@@ -1,0 +1,2 @@
+scenario,total_cost_eur,imported_energy_kwh,exported_energy_kwh,dg_energy_kwh,final_bess_soc,final_hss_soh,final_pev_soc,pev_target,pev_target_satisfied,comfort_violation_degC_sum,temp_slack_sum,pev_slack_max_kwh,max_power_balance_residual_kw
+scenario_B_summer_cf_0_45,5519.016832866452,10678.01012426745,0.0,-8.769374115757955e-14,0.1,0.5,0.8,0.8,True,0.0,-8.215650382226158e-15,0.0,4.973799150320701e-14
