@@ -2,6 +2,7 @@
 
 Use these figures as slide-ready material to explain the model, the MPC workflow, and the outputs.
 
+- `SCRIPT_PRESENTAZIONE.md`: Italian speaking script for the project presentation.
 - `00_microgrid_architecture.png`: system architecture and energy components.
 - `01_mpc_workflow.png`: receding-horizon computation process.
 - `02_scenario_comparison.png`: cost, import, DG, and PEV comparison across scenarios.
