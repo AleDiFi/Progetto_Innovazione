@@ -43,15 +43,25 @@ Questo approccio è utile perché combina pianificazione e adattamento. Pianific
 
 ---
 
-## Slide metodologia - Formulazione Pyomo del modello
+## Slide 01b - Metodologia: formulazione Pyomo del modello
 
-Nel codice il modello è costruito nel file `model.py` attraverso una funzione che genera un `ConcreteModel` Pyomo.
+Questa slide riassume come la formulazione matematica viene tradotta in Pyomo. Nel file `model.py` costruiamo un `ConcreteModel` con orizzonte `T = 24` ore e passo `dt = 1` ora: le variabili di controllo sono indicizzate da `j = 0,...,23` (dove j indica gli intervalli decisionali) mentre gli stati sono su `k = 0,...,24` perché serve anche lo stato finale predetto.
 
-Le variabili principali sono le potenze scambiate con la rete, la potenza fotovoltaica eventualmente tagliata, la carica e scarica della batteria, la fuel cell, l'elettrolizzatore, il generatore, HVAC e ricarica PEV. Gli stati dinamici sono invece lo stato di carica della batteria, lo stato dell'idrogeno e la temperatura interna.
+Le variabili continue rappresentano le potenze dei diversi dispositivi e gli stati del sistema, quindi batteria, idrogeno e temperatura interna. Le binarie servono solo dove c'è una scelta di modalità: import oppure export, carica oppure scarica della batteria, fuel cell oppure elettrolizzatore, heating oppure cooling. In questo modo il solver non può scegliere combinazioni non fisiche.
 
-Le variabili binarie servono a impedire comportamenti non fisici. Per esempio, il modello non può importare ed esportare energia nello stesso momento; la batteria non può caricarsi e scaricarsi contemporaneamente; il sistema HVAC non può riscaldare e raffrescare nello stesso intervallo; fuel cell ed elettrolizzatore non possono lavorare insieme.
+La funzione obiettivo è una somma oraria del costo di importazione dalla rete, meno il ricavo da export, più il costo del generatore distribuito, a cui aggiungiamo le penalità sulle slack:
 
-La funzione obiettivo minimizza il costo dell'energia importata dalla rete, più il costo del combustibile del generatore, meno i ricavi dell'energia esportata. Abbiamo aggiunto anche penalità molto alte per eventuali violazioni del comfort o del target PEV. Queste variabili di slack servono a evitare infeasibility numeriche, ma essendo molto penalizzate il solver le usa solo se necessario.
+`min Σ_j [c_l(j)·P_i(j) - p_e(j)·P_e(j) + (c_f/η_g)·P_g(j)]·dt + 10^5·slack_pev + 10^5·Σ_k(slack_temp_low + slack_temp_high)`
+
+Numericamente questo è importante perché il costo specifico del generatore dipende da `c_f / η_g`. Con `η_g = 0,75`, se `c_f = 0,15 EUR/kWh` il costo elettrico equivalente del DG è circa `0,20 EUR/kWh`; se `c_f = 0,45`, sale a circa `0,60 EUR/kWh`. Questo spiega perché negli scenari A e C il generatore viene usato molto, mentre negli scenari B e D quasi si spegne.
+
+Il primo vincolo chiave è il bilancio di potenza, cioè in ogni ora la somma delle sorgenti deve uguagliare la somma dei carichi:
+
+`P_i + (P_pv - P_curt) + P_b_dsc + P_fc + P_g = P_e + P_ul + P_c + P_h + P_b_ch + P_ely + P_pev`
+
+Poi ci sono i vincoli dinamici e di capacità. La batteria resta tra `0,10` e `0,90 p.u.` con potenza massima `140 kW`: per esempio, una carica da `10 kW` per un'ora aumenta il SoC di circa `0,95·10/140 = 0,068`, mentre una scarica da `10 kW` lo riduce di circa `(10/0,90)/140 = 0,079`. Il sistema a idrogeno resta tra `0,10` e `0,90 p.u.` e, quando è acceso, fuel cell ed elettrolizzatore lavorano tra `6,5` e `65 kW`. L'HVAC ha limite `12 kW` e deve mantenere la temperatura entro `setpoint ± 2 °C`.
+
+Infine il PEV può caricare solo quando è disponibile e fino a `10 kW`. Passare da `0,30` a `0,80 p.u.` con una batteria da `30 kWh` significa fornire `15 kWh` netti; considerando `η_pev = 0,90`, l'energia richiesta al caricatore è circa `16,7 kWh`. Le slack hanno penalità pari a `10^5`, quindi in pratica restano nulle nei casi normali e servono solo a evitare infeasibility numeriche.
 
 ---
 

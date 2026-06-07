@@ -179,6 +179,35 @@ def _style_presentation_axis(ax, title: str, xlabel: str | None = None, ylabel: 
     ax.tick_params(labelsize=9)
 
 
+def _add_slide_box(
+    ax,
+    x0: float,
+    y0: float,
+    width: float,
+    height: float,
+    title: str,
+    body: str,
+    *,
+    facecolor: str = "#f8fafc",
+    edgecolor: str = "#cbd5e1",
+) -> None:
+    """Draw a presentation text box with a title and body."""
+
+    rect = plt.Rectangle((x0, y0), width, height, facecolor=facecolor, edgecolor=edgecolor, linewidth=1.5)
+    ax.add_patch(rect)
+    ax.text(x0 + 0.02, y0 + height - 0.04, title, ha="left", va="top", fontsize=12.5, weight="bold", color="#0f172a")
+    ax.text(
+        x0 + 0.02,
+        y0 + height - 0.09,
+        body,
+        ha="left",
+        va="top",
+        fontsize=10,
+        color="#334155",
+        linespacing=1.35,
+    )
+
+
 def _cost_terms(df: pd.DataFrame, parms: MicrogridParams) -> dict[str, float]:
     """Return objective cost components realized by the first MPC actions."""
 
@@ -287,6 +316,83 @@ def _save_mpc_workflow(output_dir: Path) -> None:
     )
     fig.tight_layout()
     fig.savefig(output_dir / "01_mpc_workflow.png", dpi=PRESENTATION_DPI)
+    plt.close(fig)
+
+
+def _save_pyomo_formulation_slide(output_dir: Path, parms: MicrogridParams) -> None:
+    """Save a slide summarizing the Pyomo MILP formulation and key numbers."""
+
+    fig, ax = plt.subplots(figsize=(13.33, 7.5))
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+    fig.patch.set_facecolor("white")
+
+    dg_cost_low = 0.15 / parms.eta_g
+    dg_cost_high = 0.45 / parms.eta_g
+    bess_charge_soc_gain = parms.dt * parms.eta_b_ch * 10.0 / parms.E_b
+    bess_discharge_soc_drop = parms.dt * (10.0 / parms.eta_b_dsc) / parms.E_b
+    pev_energy_net = parms.E_pev * (parms.SoC_pev_target - parms.SoC_pev_0)
+    pev_energy_gross = pev_energy_net / parms.eta_pev
+
+    ax.text(0.5, 0.94, "Pyomo formulation of the MILP model", ha="center", va="center", fontsize=20, weight="bold")
+    ax.text(
+        0.5,
+        0.89,
+        "ConcreteModel with 24-hour horizon, 1-hour sampling time, continuous power/state variables, and binary mode logic.",
+        ha="center",
+        va="center",
+        fontsize=12,
+        color="#475569",
+    )
+
+    structure_body = (
+        "Indices:\n"
+        "J = 0..23 decisions, K = 0..24 states\n\n"
+        "Continuous variables:\n"
+        "power flows, PV curtailment,\n"
+        "SoC_b, SoH_h, T_in\n\n"
+        "Binary logic:\n"
+        "import/export, charge/discharge,\n"
+        "FC/electrolyzer, cooling/heating"
+    )
+    _add_slide_box(ax, 0.05, 0.47, 0.42, 0.33, "Model structure", structure_body, facecolor="#eef6ff", edgecolor="#93c5fd")
+
+    objective_body = (
+        "min sum_j [c_l(j) P_i(j) - p_e(j) P_e(j)\n"
+        "+ (c_f / eta_g) P_g(j)] dt\n"
+        "+ 1e5 s_pev + 1e5 sum_k(sT_low + sT_high)\n"
+        "+ 1e-6 regularization\n\n"
+        f"DG marginal electricity cost:\n"
+        f"{dg_cost_low:.2f} EUR/kWh_el at c_f = 0.15\n"
+        f"{dg_cost_high:.2f} EUR/kWh_el at c_f = 0.45"
+    )
+    _add_slide_box(ax, 0.53, 0.47, 0.42, 0.33, "Objective function", objective_body, facecolor="#fff7ed", edgecolor="#fdba74")
+
+    constraints_body = (
+        "Power balance each hour:\n"
+        "P_i + (P_pv - P_curt) + P_b_dsc + P_fc + P_g\n"
+        "= P_e + P_ul + P_c + P_h + P_b_ch + P_ely + P_pev\n\n"
+        f"BESS: 0.10 <= SoC_b <= 0.90, P <= {parms.P_b_nom:.0f} kW\n"
+        f"H2: 0.10 <= SoH_h <= 0.90, {parms.P_fc_min:.1f}-{parms.P_fc_nom:.0f} kW when ON\n"
+        f"DG: {parms.P_g_min:.0f}-{parms.P_g_nom:.0f} kW when ON\n"
+        f"HVAC: P_c, P_h <= {parms.P_hvac_nom:.0f} kW and T_in in T_sp +/- {parms.Delta_T:.0f} degC"
+    )
+    _add_slide_box(ax, 0.05, 0.08, 0.42, 0.31, "Core constraints", constraints_body, facecolor="#f0fdf4", edgecolor="#86efac")
+
+    interpretation_body = (
+        f"10 kW BESS charge for 1 h -> Delta SoC = +{bess_charge_soc_gain:.3f}\n"
+        f"10 kW BESS discharge for 1 h -> Delta SoC = -{bess_discharge_soc_drop:.3f}\n\n"
+        f"PEV target 0.30 -> 0.80 on {parms.E_pev:.0f} kWh:\n"
+        f"{pev_energy_net:.1f} kWh net, {pev_energy_gross:.1f} kWh at charger\n\n"
+        f"PEV power <= UR_pev * {parms.P_pev_nom:.0f} kW\n"
+        "Slack penalties = 1e5, so violations appear\n"
+        "only if needed for feasibility."
+    )
+    _add_slide_box(ax, 0.53, 0.08, 0.42, 0.31, "Numerical interpretation", interpretation_body, facecolor="#faf5ff", edgecolor="#d8b4fe")
+
+    fig.tight_layout()
+    fig.savefig(output_dir / "01b_pyomo_formulation.png", dpi=PRESENTATION_DPI)
     plt.close(fig)
 
 
@@ -431,6 +537,7 @@ def save_presentation_plots(
 def save_presentation_overview(
     summaries: pd.DataFrame,
     all_results: dict[str, pd.DataFrame],
+    parms: MicrogridParams,
     output_dir: Path,
 ) -> None:
     """Save cross-scenario slide-ready plots and a small index file."""
@@ -438,6 +545,7 @@ def save_presentation_overview(
     presentation_dir = ensure_dir(output_dir / "presentation")
     _save_microgrid_architecture(presentation_dir)
     _save_mpc_workflow(presentation_dir)
+    _save_pyomo_formulation_slide(presentation_dir, parms)
 
     fig, axes = plt.subplots(2, 2, figsize=(13.33, 7.5))
     scenarios = summaries["scenario"].to_list()
@@ -473,6 +581,7 @@ def save_presentation_overview(
         "",
         "- `00_microgrid_architecture.png`: system architecture and energy components.",
         "- `01_mpc_workflow.png`: receding-horizon computation process.",
+        "- `01b_pyomo_formulation.png`: Pyomo objective, constraints, and key numerical interpretations.",
         "- `02_scenario_comparison.png`: cost, import, DG, and PEV comparison across scenarios.",
         "- `03_cumulative_cost_comparison.png`: cumulative cost trajectory across scenarios.",
         "- `10_dispatch_explained_<scenario>.png`: supply and demand dispatch for each scenario.",

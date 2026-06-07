@@ -2,9 +2,9 @@
 
 Use these figures as slide-ready material to explain the model, the MPC workflow, and the outputs.
 
-- `SCRIPT_PRESENTAZIONE.md`: Italian speaking script for the project presentation.
 - `00_microgrid_architecture.png`: system architecture and energy components.
 - `01_mpc_workflow.png`: receding-horizon computation process.
+- `01b_pyomo_formulation.png`: Pyomo objective, constraints, and key numerical interpretations.
 - `02_scenario_comparison.png`: cost, import, DG, and PEV comparison across scenarios.
 - `03_cumulative_cost_comparison.png`: cumulative cost trajectory across scenarios.
 - `10_dispatch_explained_<scenario>.png`: supply and demand dispatch for each scenario.

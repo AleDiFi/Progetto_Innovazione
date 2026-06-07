@@ -54,7 +54,7 @@ def main() -> None:
 
     all_summaries = pd.concat(summaries, ignore_index=True)
     all_summaries.to_csv(output_dir / "summary_all_scenarios.csv", index=False)
-    save_presentation_overview(all_summaries, scenario_results, output_dir)
+    save_presentation_overview(all_summaries, scenario_results, base_params, output_dir)
     print(f"\nSaved CSV files and plots in: {output_dir.resolve()}")
 
 
