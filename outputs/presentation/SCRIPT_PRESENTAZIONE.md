@@ -11,9 +11,9 @@ Buongiorno, oggi presentiamo il nostro progetto di gestione energetica per uno s
 
 Il problema di partenza è questo: in un sistema reale la domanda elettrica, la produzione fotovoltaica, i prezzi dell'energia e le condizioni ambientali cambiano continuamente. Quindi non basta decidere una strategia fissa una volta per tutte. Serve un controllore capace di prendere decisioni ora per ora, usando le informazioni disponibili e rispettando vincoli fisici ed economici.
 
-Nel nostro caso il distretto include fotovoltaico, rete elettrica, batteria, sistema a idrogeno con elettrolizzatore e fuel cell, generatore distribuito non rinnovabile, carico uffici, HVAC per il comfort termico e ricarica di un veicolo elettrico. L'obiettivo è minimizzare il costo operativo, ma senza violare i vincoli fondamentali: bilancio di potenza, limiti degli accumuli, comfort indoor e target di ricarica del veicolo.
+L'obiettivo è minimizzare il costo operativo, ma senza violare i vincoli fondamentali: bilancio di potenza, limiti degli accumuli, comfort indoor e target di ricarica del veicolo.
 
-Per risolvere questo problema abbiamo usato un approccio di ottimizzazione chiamato Model Predictive Control, o MPC. L'idea è semplice: a ogni ora guardiamo avanti sulle prossime 24 ore, ottimizziamo il comportamento del sistema, applichiamo solo la prima decisione e poi ripetiamo tutto all'ora successiva con gli stati aggiornati.
+Per risolvere questo problema abbiamo usato un approccio di ottimizzazione chiamato Model Predictive Control, o MPC.
 
 Per implementare il modello matematico abbiamo usato Pyomo, una libreria Python per formulare problemi di ottimizzazione. Pyomo ci permette di descrivere variabili, vincoli e funzione obiettivo in modo leggibile, restando vicini alla formulazione matematica. In particolare, il nostro modello è un MILP, cioè un problema lineare misto-intero: contiene variabili continue, come potenze e stati di carica, e variabili binarie, usate per rappresentare modalità operative come import/export, carica/scarica della batteria o riscaldamento/raffrescamento.
 
@@ -35,7 +35,7 @@ Il vincolo centrale è il bilancio di potenza: in ogni ora, l'energia che entra 
 
 Questa slide descrive il funzionamento del controllo predittivo.
 
-Il ciclo parte dalla misura dello stato corrente: stato di carica della batteria, stato del serbatoio a idrogeno, temperatura interna e stato di carica del veicolo elettrico. Poi vengono costruite le previsioni per le successive 24 ore: temperatura esterna, produzione fotovoltaica, carico non controllabile, prezzi dell'energia, setpoint termico e disponibilità del veicolo.
+Il ciclo parte dalla misura dello stato corrente: stato di carica della batteria ($S_{oCb}$), stato del serbatoio a idrogeno ($S_{oH}$), temperatura interna ($T_{in}$)e stato di carica del veicolo elettrico ($S_{oC_{pev}}$). Poi vengono costruite le previsioni per le successive 24 ore: temperatura esterna ($T_{ex}$), produzione fotovoltaica ($PV$), carico non controllabile, prezzi dell'energia, setpoint termico e disponibilità del veicolo.
 
 A questo punto Pyomo costruisce il problema MILP e lo passa a un solver. Il solver restituisce la sequenza ottima di decisioni per tutte le 24 ore dell'orizzonte, ma nella simulazione applichiamo solo la prima ora. Questa è la logica receding horizon: dopo un'ora aggiorniamo gli stati e ricalcoliamo tutto.
 
@@ -45,23 +45,13 @@ Questo approccio è utile perché combina pianificazione e adattamento. Pianific
 
 ## Slide 01b - Metodologia: formulazione Pyomo del modello
 
-Questa slide riassume come la formulazione matematica viene tradotta in Pyomo. Nel file `model.py` costruiamo un `ConcreteModel` con orizzonte `T = 24` ore e passo `dt = 1` ora: le variabili di controllo sono indicizzate da `j = 0,...,23` (dove j indica gli intervalli decisionali) mentre gli stati sono su `k = 0,...,24` perché serve anche lo stato finale predetto.
+Questa slide riassume come la formulazione matematica viene tradotta in Pyomo. Nel file `model.py` costruiamo un `ConcreteModel` con orizzonte `T = 24` ore e passo `dt = 1` ora:
 
 Le variabili continue rappresentano le potenze dei diversi dispositivi e gli stati del sistema, quindi batteria, idrogeno e temperatura interna. Le binarie servono solo dove c'è una scelta di modalità: import oppure export, carica oppure scarica della batteria, fuel cell oppure elettrolizzatore, heating oppure cooling. In questo modo il solver non può scegliere combinazioni non fisiche.
 
-La funzione obiettivo è una somma oraria del costo di importazione dalla rete, meno il ricavo da export, più il costo del generatore distribuito, a cui aggiungiamo le penalità sulle slack:
+Per quanto riguarda la funzione obiettivo, il modello cerca di minimizzare il costo operativo complessivo dello smart district. In pratica considera prima il costo dell’energia acquistata dalla rete, poi sottrae i ricavi ottenuti dall’eventuale energia esportata. A questo aggiunge il costo di utilizzo del generatore diesel, che dipende dal combustibile consumato. Inoltre, nella funzione obiettivo sono presenti penalità elevate per evitare che il modello non rispetti il target di ricarica del veicolo elettrico o la fascia di comfort termico interna. Infine, c’è una piccola regolarizzazione operativa, cioè una penalità molto bassa che serve a evitare l’uso inutile di alcuni componenti, come batteria, fuel cell, elettrolizzatore o curtailment fotovoltaico.
 
-`min Σ_j [c_l(j)·P_i(j) - p_e(j)·P_e(j) + (c_f/η_g)·P_g(j)]·dt + 10^5·slack_pev + 10^5·Σ_k(slack_temp_low + slack_temp_high)`
-
-Numericamente questo è importante perché il costo specifico del generatore dipende da `c_f / η_g`. Con `η_g = 0,75`, se `c_f = 0,15 EUR/kWh` il costo elettrico equivalente del DG è circa `0,20 EUR/kWh`; se `c_f = 0,45`, sale a circa `0,60 EUR/kWh`. Questo spiega perché negli scenari A e C il generatore viene usato molto, mentre negli scenari B e D quasi si spegne.
-
-Il primo vincolo chiave è il bilancio di potenza, cioè in ogni ora la somma delle sorgenti deve uguagliare la somma dei carichi:
-
-`P_i + (P_pv - P_curt) + P_b_dsc + P_fc + P_g = P_e + P_ul + P_c + P_h + P_b_ch + P_ely + P_pev`
-
-Poi ci sono i vincoli dinamici e di capacità. La batteria resta tra `0,10` e `0,90 p.u.` con potenza massima `140 kW`: per esempio, una carica da `10 kW` per un'ora aumenta il SoC di circa `0,95·10/140 = 0,068`, mentre una scarica da `10 kW` lo riduce di circa `(10/0,90)/140 = 0,079`. Il sistema a idrogeno resta tra `0,10` e `0,90 p.u.` e, quando è acceso, fuel cell ed elettrolizzatore lavorano tra `6,5` e `65 kW`. L'HVAC ha limite `12 kW` e deve mantenere la temperatura entro `setpoint ± 2 °C`.
-
-Infine il PEV può caricare solo quando è disponibile e fino a `10 kW`. Passare da `0,30` a `0,80 p.u.` con una batteria da `30 kWh` significa fornire `15 kWh` netti; considerando `η_pev = 0,90`, l'energia richiesta al caricatore è circa `16,7 kWh`. Le slack hanno penalità pari a `10^5`, quindi in pratica restano nulle nei casi normali e servono solo a evitare infeasibility numeriche.
+I vincoli principali servono a garantire che il modello non scelga soluzioni solo economiche, ma anche fisicamente realizzabili. A ogni ora deve valere il bilancio di potenza: tutto ciò che entra nel bus elettrico deve essere uguale a tutto ciò che esce. Inoltre, ogni componente deve lavorare entro i propri limiti: la batteria tra il 10% e il 90%, l’idrogeno tra il 10% e il 90%, il generatore diesel solo tra 40 e 120 kW quando è acceso, l’HVAC entro 12 kW e la temperatura interna entro una fascia di comfort di più o meno 2 gradi rispetto al setpoint.
 
 ---
 
